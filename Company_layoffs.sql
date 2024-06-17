@@ -13,17 +13,16 @@ FROM layoffs;
 -- WE WILL:
 -- Remove duplicates
 -- Standardize the data
--- Null valuea and Blank values
+-- Deal with Null and Blank values
 -- Remove unnecessary rows and columns
 
 
 -- 1. REMOVING DUPLICATES
 
--- To create a new table layoffs_staging with structure exactly like layoffs
+-- To create a copy of the table layoffs called layoff_staging
 CREATE TABLE layoffs_staging
 LIKE layoffs;
 
--- To populte the new table layoffs_staging
 INSERT layoffs_staging
 SELECT * FROM layoffs;
 
@@ -33,13 +32,14 @@ SELECT COUNT(*) FROM layoffs_staging;
 -- To understand the structure of the table
 DESC layoffs_staging;
 
--- This step helps us to create row numbers which helps to check for the duplictes in the data
+-- Partition the data over all the values and assign row numbers
+-- To identify the duplicate values in the data
 SELECT *,
 ROW_NUMBER() OVER(PARTITION BY company, location, industry, total_laid_off, percentage_laid_off, `date`,
 stage, country, funds_raised_millions)
 FROM layoffs_staging;
 
--- To look at only those rows that are duplicated
+-- To look at duplicated values
 WITH duplicate_cte AS
 (
 SELECT *,
@@ -67,7 +67,8 @@ ADD COLUMN row_num INT;
 ALTER TABLE layoffs_staging
 DROP COLUMN row_num;
 
--- Create a new table with exactly the same rows as layoffs_staging+ a new row_num column to check for the duplicates in the data
+-- Create a new table called layoffs_staging2 with exactly the same rows as layoffs_staging
+-- Additionally a new row_num column to check for the duplicates in the data
 CREATE TABLE `layoffs_staging2` (
   `company` varchar(29) DEFAULT NULL,
   `location` varchar(16) DEFAULT NULL,
@@ -92,7 +93,7 @@ FROM layoffs_staging;
 
 SET SQL_SAFE_UPDATES = 0;
 
--- Just delete the duplicated records
+-- Delete the duplicated records
 DELETE
 FROM layoffs_staging2
 WHERE row_num>1;
@@ -108,13 +109,12 @@ SELECT *
 FROM layoffs_staging2;
 
 
--- STANDARDIZING VALUES
+-- 2. STANDARDIZING VALUE
 
 -- To see if there is a need of change in the company names
 SELECT company, TRIM(company)
 FROM layoffs_staging2;
 -- There are extra whitespaces before and after the text in some of the records
-
 
 -- To change the company names into a proper format
 UPDATE layoffs_staging2
@@ -123,9 +123,9 @@ SET company=TRIM(company);
 -- To see all unique values of industry type in the data
 SELECT DISTINCT(industry)
 FROM layoffs_staging2;
--- The data has entries named, Crypto, CryptoCurrency etc. 
+-- The data has entries named, Crypto, CryptoCurrency etc. This needs to be fixed as all these values correspond to the same industry.
 
--- To get records of all values where the idustry name starts from Crypto(Crypto, cryptocurrency, etc)
+-- To get records of all values where the idustry name starts from Crypto(Crypto, Cryptocurrency, etc)
 SELECT *
 FROM layoffs_staging2
 WHERE industry LIKE 'Crypto%';
@@ -138,18 +138,18 @@ WHERE industry LIKE 'Crypto%';
 -- See different countries in the data
 SELECT DISTINCT(country)
 FROM layoffs_staging2;
--- It can be seen that in some of the records, the United States has been terminated by a period
+-- It can be seen that in some of the records, 'United States' has been terminated by a period
 
 SELECT * 
 FROM layoffs_staging2
 WHERE Country LIKE 'United States.%';
 
--- Update the wrong records
+-- Update the inccorect records
 UPDATE layoffs_staging2
 SET country='United States'
 WHERE country LIKE 'United States.'; 
 
--- To look at date column(string) in the SQl date format
+-- To look at date column(which is in string format) in the SQl date format
 SELECT `date`,
 STR_TO_DATE(`date`,'%m/%d/%Y')
 FROM layoffs_staging2;
@@ -162,7 +162,7 @@ SET `date`=STR_TO_DATE(`date`,'%m/%d/%Y');
 ALTER TABLE layoffs_staging2
 MODIFY COLUMN `date` DATE;
 
--- NULL AND BLANK VALUES
+-- 3. Deal with Null and Blank values
 -- Try to populate the data where ever possible
 
 -- See the columns where industry is absent
@@ -183,7 +183,7 @@ SELECT *
 FROM layoffs_staging2 t1
 JOIN layoffs_staging2 t2
 	ON t1.company = t2.company
-    AND t1.location = t2.location
+    	AND t1.location = t2.location
 WHERE t1.industry IS NULL
 AND t2.industry IS NOT NULL; 
 
@@ -196,14 +196,13 @@ SET t1.industry=t2.industry
 WHERE t1.industry IS NULL
 AND t2.industry IS NOT NULL; 
 
--- We see that for this company, we do not have another record
--- Therefore, we will not be able to populate it
+-- We see that for the company called 'Bally's Interactive', we do not have another record
 SELECT *
 FROM layoffs_staging2
 WHERE company LIKE 'Bally%';
+-- Therefore, we will not be able to populate it
 
-
--- DELETEING DATA
+-- 4. DELETEING DATA
 -- We want to do exploratory analysis on the layoffs
 -- It is essential for us to have the data of layoffs
 
@@ -234,21 +233,21 @@ DROP COLUMN row_num;
 -- To see the maximum number of layoffs and the maximum proportion of layoffs
 SELECT MAX(total_laid_off), MAX(percentage_laid_off)
 FROM layoffs_staging2;
--- Maximum number of people laid off in one go was 12000
--- Maximum percentage of people laid off in one go was 100%
+-- Maximum number of people laid off in one-go was 12000
+-- Maximum percentage of people laid off in one-go was 100%
 
 -- To see the record of the company in which all the employess were laid off
 SELECT *
 FROM layoffs_staging2
 WHERE percentage_laid_off=1
 ORDER BY funds_raised_millions DESC;
--- A huge number of companys laid off all their employees
+-- Many companys laid off all their employees
 -- Possible reasons may be closure, bankruptcy
 
--- look at the start and end date of the data
+-- Look at the start and end date of the data
 SELECT MIN(`date`), MAX(`date`)
 FROM layoffs_staging2;
--- The data is from March, 2020 to March 2023 i.e. During and post COVID-19
+-- The data is from March, 2020 to March, 2023 i.e. During and post COVID-19
 
 -- To see the number of layoffs in each company for the whole data
 SELECT company, SUM(total_laid_off)
@@ -269,7 +268,7 @@ SELECT country, SUM(total_laid_off)
 FROM layoffs_staging2
 GROUP BY country
 ORDER BY 2 DESC;
--- Maximum number of layoffs in the Us followed by India and Netherlands
+-- Maximum number of layoffs in the Unites States followed by India and Netherlands
 
 -- To see the number of layoffs year wise for the whole data
 SELECT YEAR(`date`), SUM(total_laid_off)
@@ -314,10 +313,10 @@ FROM layoffs_staging2
 GROUP BY company,YEAR(`date`)
 ORDER BY 3 DESC;
 
--- the first CTE will find the total layoffs by each company in each year
--- the second CTE will rank the total number of layoffs yearly
+-- The first CTE will find the total layoffs by each company in each year
+-- The second CTE will rank the total number of layoffs yearly
 -- i.e. for each year, it'll assign the rank from the company which had the most layoffs all the way to the least
--- then we take a look at the companys that laid off the maximum number of people for each year we have the data on
+-- Then we take a look at the companys that laid off the maximum number of people for each year we have the data on
 WITH company_year(company, years, total_laid_off) AS
 (
 SELECT company,YEAR(`date`), SUM(total_laid_off)
